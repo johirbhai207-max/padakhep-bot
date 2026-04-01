@@ -1,14 +1,15 @@
 import streamlit as st
 import google.generativeai as genai
 
-# ১. সুরক্ষা নিশ্চিত করতে এপিআই কি সরাসরি কোডে নেই (Secrets থেকে আসবে)
+# ১. Secrets থেকে API Key গ্রহণ (সুরক্ষার জন্য এটি কোডে সরাসরি নেই)
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
-except:
-    st.error("Streamlit Secrets-এ 'GEMINI_API_KEY' পাওয়া যায়নি।")
+except Exception:
+    st.error("Error: Streamlit Secrets-এ 'GEMINI_API_KEY' সেট করা নেই।")
+    st.info("Streamlit Dashboard > Settings > Secrets-এ গিয়ে আপনার নতুন API Key-টি সেভ করুন।")
     st.stop()
 
-# ২. ড্রাইভ ফোল্ডার ডাটা
+# ২. ড্রাইভ ফোল্ডার ডাটা (পদক্ষেপ গাইডলাইন)
 FOLDER_DATA = {
     "অগ্রসর": "https://drive.google.com/drive/folders/1UJ5pVxSF25TpbgaHAT6BS7fv47ewSlpw",
     "আর্থিক ও প্রশাসনিক অনিয়ম": "https://drive.google.com/drive/folders/1thXY_XJwHFEh6qsuezQeZ714SHCb2VwF",
@@ -23,34 +24,43 @@ FOLDER_DATA = {
 st.set_page_config(page_title="পদক্ষেপ মিত্র", page_icon="🤖")
 st.title("🤖 পদক্ষেপ মিত্র (Padakhep Mitra)")
 
-# সাইডবার
-selected_keyword = st.sidebar.selectbox("বিভাগ নির্বাচন করুন:", list(FOLDER_DATA.keys()))
-folder_link = FOLDER_DATA[selected_keyword]
-st.sidebar.markdown(f"📁 [ফোল্ডার লিংক]({folder_link})")
-
-# ৩. এপিআই কনফিগারেশন ও মডেল সিলেকশন
+# ৩. এপিআই এবং মডেল সিলেকশন (এটি 404 Error দূর করবে)
 @st.cache_resource
-def setup_ai():
+def load_ai_model():
     try:
         genai.configure(api_key=API_KEY)
-        # সবচেয়ে আপডেট এবং নির্ভরযোগ্য মডেল ব্যবহার করা হচ্ছে
-        return genai.GenerativeModel('gemini-1.5-flash')
+        
+        # আপনার অ্যাকাউন্টে বর্তমানে কোন কোন মডেল কাজ করছে তা দেখা
+        all_models = genai.list_models()
+        valid_models = [m.name for m in all_models if 'generateContent' in m.supported_generation_methods]
+        
+        # অগ্রাধিকার ভিত্তিতে মডেল নির্বাচন
+        for preferred in ['models/gemini-1.5-flash', 'models/gemini-pro', 'models/gemini-1.5-pro']:
+            if preferred in valid_models:
+                return genai.GenerativeModel(preferred)
+        
+        # যদি উপরেরগুলো না থাকে তবে লিস্টিংয়ের প্রথম মডেলটি নেবে
+        if valid_models:
+            return genai.GenerativeModel(valid_models[0])
+        return None
     except Exception as e:
-        st.error(f"এআই কনফিগারেশনে সমস্যা: {e}")
+        st.error(f"এআই মডেল লোড করতে সমস্যা: {e}")
         return None
 
-model = setup_ai()
+model = load_ai_model()
 
-# চ্যাট ইন্টারফেস
+# ৪. চ্যাট ইন্টারফেস
+selected_keyword = st.sidebar.selectbox("গাইডলাইন বিভাগ নির্বাচন করুন:", list(FOLDER_DATA.keys()))
+folder_link = FOLDER_DATA[selected_keyword]
+
 if "messages" not in st.session_state:
-    st.session_state.messages = []
-    st.session_state.messages.append({"role": "assistant", "content": f"নমস্কার! আমি আপনাকে **{selected_keyword}** গایدলাইন নিয়ে সাহায্য করতে পারি।"})
+    st.session_state.messages = [{"role": "assistant", "content": f"নমস্কার! আমি আপনাকে **{selected_keyword}** গাইডলাইন নিয়ে সাহায্য করতে পারি।"}]
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-if prompt := st.chat_input("আপনার প্রশ্ন লিখুন..."):
+if prompt := st.chat_input("আপনার প্রশ্নটি এখানে লিখুন..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -58,13 +68,12 @@ if prompt := st.chat_input("আপনার প্রশ্ন লিখুন..
     with st.chat_message("assistant"):
         if model:
             try:
-                system_msg = f"তুমি পদক্ষেপ মানবিক উন্নয়ন কেন্দ্রের বিশেষজ্ঞ। '{selected_keyword}' বিষয়ে উত্তর দাও। শেষে এই লিংকটি দাও: {folder_link}"
-                response = model.generate_content(f"{system_msg}\n\nUser Question: {prompt}")
-                if response.text:
-                    st.markdown(response.text)
-                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                system_context = f"তুমি পদক্ষেপ মানবিক উন্নয়ন কেন্দ্রের ডিজিটাল অ্যাসিস্ট্যান্ট। '{selected_keyword}' বিষয়ে উত্তর দাও। শেষে এই লিংকটি দাও: {folder_link}"
+                response = model.generate_content(f"{system_context}\n\nUser Question: {prompt}")
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
             except Exception as e:
-                st.error("⚠️ দুঃখিত, উত্তর তৈরি করতে সমস্যা হয়েছে।")
-                st.code(f"Error: {str(e)}")
+                st.error("দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না।")
+                st.code(f"Error Code: {str(e)}")
         else:
-            st.error("এআই মডেল লোড করা সম্ভব হয়নি।")
+            st.error("আপনার API Key দিয়ে কোনো এআই মডেল খুঁজে পাওয়া যায়নি।")
