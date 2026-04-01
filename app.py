@@ -3,7 +3,7 @@ import google.generativeai as genai
 
 # ১. কনফিগারেশন: আপনার এপিআই কি (API Key) এখানে বসান
 # কোটেশনের ভেতর আপনার আসল কি-টি দিন
-API_KEY = "আপনার_এপিআই_কি_এখানে_দিন" 
+API_KEY = "AIzaSyAnrjqKli8VoFuLLxeX7bFF3bLayOB3gd8" 
 
 # ২. কিওয়ার্ড এবং পদক্ষেপের গুগল ড্রাইভ ফোল্ডার লিংক (আপডেট করা)
 FOLDER_DATA = {
