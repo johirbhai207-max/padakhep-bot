@@ -1,10 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
 
-# ১. কনফিগারেশন: আপনার দেওয়া এপিআই কি (API Key)
+# ১. কনফিগারেশন: আপনার দেওয়া এপিআই কি
 API_KEY = "AIzaSyAnrjqKli8VoFuLLxeX7bFF3bLayOB3gd8" 
 
-# ২. কিওয়ার্ড এবং পদক্ষেপের ফোল্ডার ডাটা
+# ২. ফোল্ডার ডাটা
 FOLDER_DATA = {
     "অগ্রসর": "https://drive.google.com/drive/folders/1UJ5pVxSF25TpbgaHAT6BS7fv47ewSlpw",
     "আর্থিক ও প্রশাসনিক অনিয়ম": "https://drive.google.com/drive/folders/1thXY_XJwHFEh6qsuezQeZ714SHCb2VwF",
@@ -16,62 +16,51 @@ FOLDER_DATA = {
     "সার্ভিস চার্জ রিবেট": "https://drive.google.com/drive/folders/197sBN3AmwesaY3pDizn9-YctxoCl3_VQ"
 }
 
-# ৩. ইউজার ইন্টারফেস ডিজাইন
+# ৩. ইউজার ইন্টারফেস
 st.set_page_config(page_title="পদক্ষেপ মিত্র", page_icon="🤖")
-
 st.title("🤖 পদক্ষেপ মিত্র (Padakhep Mitra)")
-st.markdown("### পদক্ষেপ মানবিক উন্নয়ন কেন্দ্র - গাইডলাইন সহায়িকা")
 
-# সাইডবার সেটিংস
-st.sidebar.header("বিভাগ নির্বাচন")
-selected_keyword = st.sidebar.selectbox("আপনি কোন বিষয়ে জানতে চান?", list(FOLDER_DATA.keys()))
+# সাইডবার
+selected_keyword = st.sidebar.selectbox("বিভাগ নির্বাচন করুন:", list(FOLDER_DATA.keys()))
 folder_link = FOLDER_DATA[selected_keyword]
+st.sidebar.markdown(f"📁 [ফোল্ডার লিংক]({folder_link})")
 
-st.sidebar.info(f"📁 বর্তমানে দেখা হচ্ছে: **{selected_keyword}**")
-st.sidebar.markdown(f"[সংশ্লিষ্ট ফোল্ডারটি দেখুন]({folder_link})")
-
-# এপিআই সেটআপ
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# এপিআই সেটআপ (Error Fix)
+try:
+    genai.configure(api_key=API_KEY)
+    # মডেলের নাম 'models/gemini-1.5-flash-latest' দিয়ে ট্রাই করা হচ্ছে যা সাধারণত ৪০৪ এরর দেয় না
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+except Exception as e:
+    st.error(f"Configuration Error: {e}")
 
 # চ্যাট হিস্ট্রি
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    st.session_state.messages.append({
-        "role": "assistant", 
-        "content": f"নমস্কার! আমি আপনাকে **{selected_keyword}** সংক্রান্ত পদক্ষেপের গাইডলাইন বুঝতে সাহায্য করতে পারি। আপনার প্রশ্নটি নিচে লিখুন।"
-    })
+    st.session_state.messages.append({"role": "assistant", "content": f"নমস্কার! আমি আপনাকে **{selected_keyword}** গাইডলাইন নিয়ে সাহায্য করতে পারি।"})
 
-# চ্যাট হিস্ট্রি প্রদর্শন
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ৪. ইউজারের প্রশ্ন এবং এআই প্রসেসিং
-if prompt := st.chat_input("এখানে আপনার প্রশ্ন লিখুন..."):
+# ৪. প্রশ্ন ও উত্তর
+if prompt := st.chat_input("আপনার প্রশ্ন লিখুন..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
         try:
-            # সিস্টেম ইন্সট্রাকশন
-            system_context = f"""
-            তুমি পদক্ষেপ মানবিক উন্নয়ন কেন্দ্রের ডিজিটাল বিশেষজ্ঞ। 
-            ইউজার এখন '{selected_keyword}' ক্যাটাগরির গাইডলাইন নিয়ে প্রশ্ন করছে। 
-            বাংলা বা ইংরেজি যে ভাষায় প্রশ্ন করা হোক, তুমি সেই ভাষাতেই উত্তর দেবে। 
-            উত্তর শেষে অবশ্যই এই লিংকটি রেফারেন্স হিসেবে দেবে: {folder_link}
-            """
+            # সিস্টেম মেসেজ
+            system_msg = f"তুমি পদক্ষেপ মানবিক উন্নয়ন কেন্দ্রের ডিজিটাল বিশেষজ্ঞ। '{selected_keyword}' বিষয়ে পদক্ষেপের গাইডলাইন অনুযায়ী উত্তর দাও। শেষে এই লিংকটি দাও: {folder_link}"
             
-            # রেসপন্স জেনারেট করা
-            response = model.generate_content(f"{system_context}\n\nপ্রশ্ন: {prompt}")
+            # জেনারেশন
+            response = model.generate_content(f"{system_msg}\n\nUser Question: {prompt}")
             
             if response.text:
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
             else:
-                st.warning("দুঃখিত, এআই কোনো তথ্য খুঁজে পায়নি।")
-
+                st.warning("এআই কোনো উত্তর দিতে পারছে না।")
         except Exception as e:
-            st.error("⚠️ একটি সমস্যা হয়েছে!")
-            st.code(f"Error Details: {str(e)}")
+            st.error("⚠️ একটি কারিগরি সমস্যা হয়েছে।")
+            st.code(f"New Error Details: {str(e)}")
