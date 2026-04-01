@@ -1,79 +1,75 @@
 import streamlit as st
 import google.generativeai as genai
+from PyPDF2 import PdfReader
+import os
 
-# ১. Secrets থেকে API Key গ্রহণ (সুরক্ষার জন্য এটি কোডে সরাসরি নেই)
+# ১. এপিআই কি সেটিংস (Secrets থেকে)
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    st.error("Error: Streamlit Secrets-এ 'GEMINI_API_KEY' সেট করা নেই।")
-    st.info("Streamlit Dashboard > Settings > Secrets-এ গিয়ে আপনার নতুন API Key-টি সেভ করুন।")
+    genai.configure(api_key=API_KEY)
+except:
+    st.error("Error: Streamlit Secrets-এ API Key পাওয়া যায়নি।")
     st.stop()
 
-# ২. ড্রাইভ ফোল্ডার ডাটা (পদক্ষেপ গাইডলাইন)
-FOLDER_DATA = {
-    "অগ্রসর": "https://drive.google.com/drive/folders/1UJ5pVxSF25TpbgaHAT6BS7fv47ewSlpw",
-    "আর্থিক ও প্রশাসনিক অনিয়ম": "https://drive.google.com/drive/folders/1thXY_XJwHFEh6qsuezQeZ714SHCb2VwF",
-    "ঋণ অনুমোদন- ToA": "https://drive.google.com/drive/folders/1WVfFil5LCwM_1C4NRUEt6tF3GKzaN5di",
-    "টর- TOR": "https://drive.google.com/drive/folders/1XNO4lHSKuRKCVfkgTFJO7REZa8Otr3EB",
-    "টিএ ডিএ": "https://drive.google.com/drive/folders/11XHxpbzG10zBhBDHlL9tpCA5XWoM65o3",
-    "লীপ- LEAP": "https://drive.google.com/drive/folders/1OdJQRU75A8o-CvjEXKjv4q9Ok8lUvVIO",
-    "সকত- MWF": "https://drive.google.com/drive/folders/1nhN83f2k_7KwEiTivzyh024WZoTOZ_Lb",
-    "সার্ভিস চার্জ রিবেট": "https://drive.google.com/drive/folders/197sBN3AmwesaY3pDizn9-YctxoCl3_VQ"
-}
+# ২. গিটহাবের ফোল্ডার থেকে পিডিএফ পড়ার ফাংশন
+@st.cache_resource # এটি একবার ফাইলগুলো পড়লে বারবার পড়বে না, ফলে অ্যাপ দ্রুত কাজ করবে
+def load_all_guidelines():
+    combined_text = ""
+    knowledge_dir = "knowledge" # আপনার গিটহাব ফোল্ডারের নাম
+    
+    if os.path.exists(knowledge_dir):
+        for filename in os.listdir(knowledge_dir):
+            if filename.endswith(".pdf"):
+                file_path = os.path.join(knowledge_dir, filename)
+                reader = PdfReader(file_path)
+                for page in reader.pages:
+                    combined_text += page.extract_text()
+    return combined_text
 
-st.set_page_config(page_title="পদক্ষেপ মিত্র", page_icon="🤖")
-st.title("🤖 পদক্ষেপ মিত্র (Padakhep Mitra)")
+# ৩. গাইডলাইন ডাটা লোড করা
+guideline_knowledge = load_all_guidelines()
 
-# ৩. এপিআই এবং মডেল সিলেকশন (এটি 404 Error দূর করবে)
-@st.cache_resource
-def load_ai_model():
-    try:
-        genai.configure(api_key=API_KEY)
-        
-        # আপনার অ্যাকাউন্টে বর্তমানে কোন কোন মডেল কাজ করছে তা দেখা
-        all_models = genai.list_models()
-        valid_models = [m.name for m in all_models if 'generateContent' in m.supported_generation_methods]
-        
-        # অগ্রাধিকার ভিত্তিতে মডেল নির্বাচন
-        for preferred in ['models/gemini-1.5-flash', 'models/gemini-pro', 'models/gemini-1.5-pro']:
-            if preferred in valid_models:
-                return genai.GenerativeModel(preferred)
-        
-        # যদি উপরেরগুলো না থাকে তবে লিস্টিংয়ের প্রথম মডেলটি নেবে
-        if valid_models:
-            return genai.GenerativeModel(valid_models[0])
-        return None
-    except Exception as e:
-        st.error(f"এআই মডেল লোড করতে সমস্যা: {e}")
-        return None
+# ৪. সিস্টেম ইন্সট্রাকশন তৈরি (এআই-কে স্থায়ীভাবে শেখানো)
+SYSTEM_INSTRUCTION = f"""
+তুমি 'পদক্ষেপ মানবিক উন্নয়ন কেন্দ্র'-এর একজন ডিজিটাল গাইডলাইন বিশেষজ্ঞ। 
+তোমার কাছে নিচের গাইডলাইনগুলোর সম্পূর্ণ জ্ঞান আছে। 
+সব সময় এই তথ্যের ভিত্তিতে উত্তর দেবে। তথ্য না থাকলে বিনয়ের সাথে বলবে যে গাইডলাইনে নেই।
 
-model = load_ai_model()
+অফিসিয়াল গাইডলাইন ডাটা:
+{guideline_knowledge}
+"""
 
-# ৪. চ্যাট ইন্টারফেস
-selected_keyword = st.sidebar.selectbox("গাইডলাইন বিভাগ নির্বাচন করুন:", list(FOLDER_DATA.keys()))
-folder_link = FOLDER_DATA[selected_keyword]
+# ৫. ইউজার ইন্টারফেস
+st.set_page_config(page_title="পদক্ষেপ মিত্র - অফিসিয়াল", page_icon="🤖")
+st.title("🤖 পদক্ষেপ মিত্র (Guideline Expert)")
+st.info("আমি আপনার আপলোড করা সব গাইডলাইন ফাইল থেকে উত্তর দিতে সক্ষম।")
 
+# চ্যাট মডেল সেটআপ
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=SYSTEM_INSTRUCTION
+)
+
+# চ্যাট হিস্ট্রি
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": f"নমস্কার! আমি আপনাকে **{selected_keyword}** গাইডলাইন নিয়ে সাহায্য করতে পারি।"}]
+    st.session_state.messages = []
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-if prompt := st.chat_input("আপনার প্রশ্নটি এখানে লিখুন..."):
+# ইউজারের প্রশ্ন গ্রহণ
+if prompt := st.chat_input("গাইডলাইন সম্পর্কে জিজ্ঞাসা করুন..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        if model:
-            try:
-                system_context = f"তুমি পদক্ষেপ মানবিক উন্নয়ন কেন্দ্রের ডিজিটাল অ্যাসিস্ট্যান্ট। '{selected_keyword}' বিষয়ে উত্তর দাও। শেষে এই লিংকটি দাও: {folder_link}"
-                response = model.generate_content(f"{system_context}\n\nUser Question: {prompt}")
-                st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
-            except Exception as e:
-                st.error("দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না।")
-                st.code(f"Error Code: {str(e)}")
-        else:
-            st.error("আপনার API Key দিয়ে কোনো এআই মডেল খুঁজে পাওয়া যায়নি।")
+        try:
+            # এআই রেসপন্স জেনারেট করা
+            response = model.generate_content(prompt)
+            st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
+        except Exception as e:
+            st.error("দুঃখিত, উত্তর দিতে সমস্যা হয়েছে।")
+            st.code(str(e))
