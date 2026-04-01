@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 
 # ১. কনফিগারেশন: আপনার এপিআই কি
-API_KEY = "AIzaSyAnrjqKli8VoFuLLxeX7bFF3bLayOB3gd8" 
+API_KEY = st.secrets["GEMINI_API_KEY"]
 
 # ২. ড্রাইভ ফোল্ডার ডাটা
 FOLDER_DATA = {
